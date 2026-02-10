@@ -82,7 +82,6 @@ class _AdminScreenState extends State<AdminScreen> {
             stream: FirebaseFirestore.instance
                 .collection('users')
                 .where('role', isEqualTo: 'contractor')
-                .where('department', isEqualTo: department)
                 .snapshots(),
             builder: (context, snapshot) {
               if (!snapshot.hasData)
