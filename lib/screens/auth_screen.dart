@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import 'phone_login_screen.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -86,12 +87,16 @@ class _AuthScreenState extends State<AuthScreen> {
                 style: const TextStyle(color: Colors.grey, fontSize: 16),
               ),
               const SizedBox(height: 40),
+
+              // 1. EMAIL INPUT
               TextField(
                 controller: _emailController,
                 style: const TextStyle(color: Colors.white),
                 decoration: _inputDecoration("Email Address", Icons.email),
               ),
               const SizedBox(height: 20),
+
+              // 2. PASSWORD INPUT
               TextField(
                 controller: _passwordController,
                 obscureText: true,
@@ -99,6 +104,8 @@ class _AuthScreenState extends State<AuthScreen> {
                 decoration: _inputDecoration("Password", Icons.lock),
               ),
               const SizedBox(height: 20),
+
+              // 3. MAIN ACTION BUTTON (LOGIN/SIGNUP)
               _isLoading
                   ? const Center(
                       child: CircularProgressIndicator(
@@ -124,6 +131,8 @@ class _AuthScreenState extends State<AuthScreen> {
                       ),
                     ),
               const SizedBox(height: 20),
+
+              // 4. TOGGLE ACCOUNT TYPE (Don't have an account?)
               TextButton(
                 onPressed: () => setState(() => _isLogin = !_isLogin),
                 child: RichText(
@@ -144,9 +153,40 @@ class _AuthScreenState extends State<AuthScreen> {
                   ),
                 ),
               ),
+
+              const SizedBox(height: 10),
+
+              // 5. PHONE LOGIN BUTTON (Added Correctly Here)
+              TextButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const PhoneLoginScreen(),
+                    ),
+                  );
+                },
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.phone, size: 16, color: Color(0xFFFF6D00)),
+                    SizedBox(width: 8),
+                    Text(
+                      "Log in with Phone Number",
+                      style: TextStyle(
+                        color: Color(0xFFFF6D00),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
               const SizedBox(height: 30),
               const Divider(color: Colors.white24),
               const SizedBox(height: 30),
+
+              // 6. GOOGLE SIGN IN
               OutlinedButton.icon(
                 onPressed: _handleGoogleSignIn,
                 icon: const Icon(
@@ -167,14 +207,19 @@ class _AuthScreenState extends State<AuthScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-              
-              // --- UPDATED PORTAL ACCESS SECTION ---
+
+              // 7. ADMIN / CONTRACTOR LINKS
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   TextButton.icon(
-                    onPressed: () => Navigator.pushNamed(context, '/admin_login'),
-                    icon: const Icon(Icons.admin_panel_settings, size: 14, color: Colors.grey),
+                    onPressed: () =>
+                        Navigator.pushNamed(context, '/admin_login'),
+                    icon: const Icon(
+                      Icons.admin_panel_settings,
+                      size: 14,
+                      color: Colors.grey,
+                    ),
                     label: const Text(
                       "Admin Access",
                       style: TextStyle(color: Colors.grey, fontSize: 12),
@@ -184,8 +229,13 @@ class _AuthScreenState extends State<AuthScreen> {
                   const Text("|", style: TextStyle(color: Colors.white24)),
                   const SizedBox(width: 10),
                   TextButton.icon(
-                    onPressed: () => Navigator.pushNamed(context, '/contractor_login'),
-                    icon: const Icon(Icons.engineering, size: 14, color: Colors.grey),
+                    onPressed: () =>
+                        Navigator.pushNamed(context, '/contractor_login'),
+                    icon: const Icon(
+                      Icons.engineering,
+                      size: 14,
+                      color: Colors.grey,
+                    ),
                     label: const Text(
                       "Contractor Access",
                       style: TextStyle(color: Colors.grey, fontSize: 12),

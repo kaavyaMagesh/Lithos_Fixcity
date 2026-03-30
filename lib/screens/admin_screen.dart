@@ -3,6 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart'; // 👈 IMPORT THIS
 import '../widgets/app_drawer.dart';
 import 'report_screen.dart';
 
@@ -27,6 +28,32 @@ class _AdminScreenState extends State<AdminScreen> {
   void initState() {
     super.initState();
     _checkUserRole();
+  }
+
+  // 🕒 AGE CALCULATOR LOGIC
+  String _getReportAge(Map<String, dynamic> data) {
+    final dynamic startData =
+        data['createdAt'] ?? data['timestamp'] ?? data['raisedAt'];
+    if (startData == null) return "N/A";
+
+    DateTime start = (startData is Timestamp)
+        ? startData.toDate()
+        : DateTime.parse(startData.toString());
+
+    DateTime end = DateTime.now();
+    String status = data['status'] ?? 'PENDING';
+
+    if (status == 'RESOLVED') {
+      final dynamic endData = data['closedAt'] ?? data['resolvedAt'];
+      if (endData != null) {
+        end = (endData is Timestamp)
+            ? endData.toDate()
+            : DateTime.parse(endData.toString());
+      }
+    }
+
+    int days = end.difference(start).inDays;
+    return days == 0 ? "Today" : "${days}d";
   }
 
   // 🔒 VERIFY ROLE
@@ -147,11 +174,52 @@ class _AdminScreenState extends State<AdminScreen> {
     );
   }
 
-  void _updateStatus(String docId, String newStatus) {
+  // 🚀 UPDATED: Logic to handle Status Update + SMS
+  void _updateStatus(
+    String docId,
+    String newStatus, [
+    Map<String, dynamic>? data,
+  ]) {
     FirebaseFirestore.instance.collection('reports').doc(docId).update({
       'status': newStatus,
       'aiAnalysis.status': newStatus,
+      if (newStatus == 'RESOLVED') 'closedAt': FieldValue.serverTimestamp(),
     });
+
+    // 📨 Trigger SMS Logic
+    if (newStatus == 'RESOLVED' && data != null) {
+      _sendResolutionSMS(docId, data);
+    }
+  }
+
+  // 📨 SEND SMS FUNCTION
+  Future<void> _sendResolutionSMS(
+    String docId,
+    Map<String, dynamic> data,
+  ) async {
+    const String targetNumber = "+916369299829"; // 👈 YOUR TARGET NUMBER
+    String description = data['description'] ?? "reported issue";
+
+    // Construct the SMS Link
+    final Uri smsLaunchUri = Uri(
+      scheme: 'sms',
+      path: targetNumber,
+      queryParameters: <String, String>{
+        'body':
+            "FixCity Update: The issue '$description' (ID: $docId) has been officially RESOLVED. Thank you!",
+      },
+    );
+
+    // Launch the App
+    try {
+      if (await canLaunchUrl(smsLaunchUri)) {
+        await launchUrl(smsLaunchUri);
+      } else {
+        print("Could not launch SMS app");
+      }
+    } catch (e) {
+      print("Error launching SMS: $e");
+    }
   }
 
   @override
@@ -195,7 +263,6 @@ class _AdminScreenState extends State<AdminScreen> {
                   int inProgress = 0;
                   Map<String, int> deptStats = {};
 
-                  // 1. Calculate Stats
                   for (var doc in docs) {
                     var data = doc.data() as Map<String, dynamic>;
                     var analysis =
@@ -213,7 +280,6 @@ class _AdminScreenState extends State<AdminScreen> {
                     deptStats[dept] = (deptStats[dept] ?? 0) + 1;
                   }
 
-                  // 2. Filter Docs
                   var filteredDocs = docs.where((doc) {
                     var data = doc.data() as Map<String, dynamic>;
                     String status = data['status'] ?? 'PENDING';
@@ -231,17 +297,9 @@ class _AdminScreenState extends State<AdminScreen> {
                     return true;
                   }).toList();
 
-                  // Inside admin_screen.dart -> StreamBuilder -> builder:
-
-                  // ... (Keep your existing stats/filter logic variables here) ...
-
-                  // 🔴 REPLACE THE OLD "return Column(...)" WITH THIS:
                   return ListView(
-                    padding: const EdgeInsets.only(
-                      bottom: 80,
-                    ), // Extra space for scrolling
+                    padding: const EdgeInsets.only(bottom: 80),
                     children: [
-                      // 1. 📊 STATS DASHBOARD (Top of the list)
                       _buildStatsDashboard(
                         total,
                         resolved,
@@ -249,8 +307,6 @@ class _AdminScreenState extends State<AdminScreen> {
                         inProgress,
                         deptStats,
                       ),
-
-                      // 2. 🗺️ MAP
                       if (filteredDocs.isNotEmpty)
                         SizedBox(
                           height: 200,
@@ -262,8 +318,6 @@ class _AdminScreenState extends State<AdminScreen> {
                             child: _buildLiveMap(filteredDocs),
                           ),
                         ),
-
-                      // 3. 🏷️ FILTERS
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -286,9 +340,6 @@ class _AdminScreenState extends State<AdminScreen> {
                         ),
                       ),
                       const SizedBox(height: 10),
-
-                      // 4. 📋 REPORT LIST ITEMS
-                      // We use the spread operator (...) to put the list items directly here
                       if (filteredDocs.isEmpty)
                         const Padding(
                           padding: EdgeInsets.all(32.0),
@@ -306,10 +357,7 @@ class _AdminScreenState extends State<AdminScreen> {
                               horizontal: 16.0,
                             ),
                             child: GestureDetector(
-                              onTap: () {
-                                // Add your navigation logic here if you have it
-                                // Navigator.push(...)
-                              },
+                              onTap: () {},
                               child: _buildAdminCard(
                                 context,
                                 doc.data() as Map<String, dynamic>,
@@ -368,40 +416,20 @@ class _AdminScreenState extends State<AdminScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Find the "Row" inside _buildAdminCard that holds the Department and Urgency
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  // 🛠️ FIX: Wrap the container in Expanded + Align
                   Expanded(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.blueGrey.shade900,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          dept.toUpperCase(),
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          maxLines: 1, // 👈 Force single line
-                          overflow: TextOverflow
-                              .ellipsis, // 👈 Adds "..." if text is too long
-                        ),
-                      ),
+                    child: Row(
+                      children: [
+                        // 🛠️ FIX 1: Wrapped in Flexible
+                        Flexible(child: _buildDeptBadge(dept)),
+                        const SizedBox(width: 8),
+                        _buildAgeBadge(data),
+                      ],
                     ),
                   ),
-
-                  const SizedBox(width: 8), // Add a small gap
-                  // The Urgency text stays the same (it won't get pushed off now)
+                  const SizedBox(width: 8), // Added gap
                   Text(
                     urgency,
                     style: TextStyle(
@@ -426,7 +454,6 @@ class _AdminScreenState extends State<AdminScreen> {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(color: Colors.grey.shade400),
               ),
-
               if (isAiVerified)
                 Container(
                   margin: const EdgeInsets.only(top: 8),
@@ -456,7 +483,6 @@ class _AdminScreenState extends State<AdminScreen> {
                     ],
                   ),
                 ),
-
               if (status == 'IN PROGRESS' && assignedName != null)
                 Padding(
                   padding: const EdgeInsets.only(top: 8.0),
@@ -478,64 +504,20 @@ class _AdminScreenState extends State<AdminScreen> {
                     ],
                   ),
                 ),
-
               const SizedBox(height: 12),
               const Divider(color: Colors.white10),
-
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   _isAdmin
-                      ? Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF2C2C2C),
-                            borderRadius: BorderRadius.circular(8),
-                            border: Border.all(color: statusColor),
-                          ),
-                          child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                              value:
-                                  [
-                                    'PENDING',
-                                    'IN PROGRESS',
-                                    'RESOLVED',
-                                  ].contains(status)
-                                  ? status
-                                  : 'PENDING',
-                              dropdownColor: const Color(0xFF2C2C2C),
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white,
-                              ),
-                              items: ['PENDING', 'IN PROGRESS', 'RESOLVED']
-                                  .map(
-                                    (val) => DropdownMenuItem(
-                                      value: val,
-                                      child: Text(
-                                        val,
-                                        style: TextStyle(
-                                          color: val == 'RESOLVED'
-                                              ? Colors.green
-                                              : Colors.orange,
-                                        ),
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (val) {
-                                if (val == 'IN PROGRESS') {
-                                  _showContractorSelector(docId, dept);
-                                } else if (val != null) {
-                                  _updateStatus(docId, val);
-                                }
-                              },
-                            ),
-                          ),
+                      ? _buildStatusDropdown(
+                          docId,
+                          status,
+                          dept,
+                          statusColor,
+                          data,
                         )
                       : _buildStatusBadge(status, statusColor),
-
                   if (_isAdmin)
                     IconButton(
                       icon: const Icon(
@@ -553,7 +535,79 @@ class _AdminScreenState extends State<AdminScreen> {
     );
   }
 
+  // 👇 HERE IS THE MISSING DROPDOWN FUNCTION
+  Widget _buildStatusDropdown(
+    String docId,
+    String status,
+    String dept,
+    Color color,
+    Map<String, dynamic> data,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF2C2C2C),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: ['PENDING', 'IN PROGRESS', 'RESOLVED'].contains(status)
+              ? status
+              : 'PENDING',
+          dropdownColor: const Color(0xFF2C2C2C),
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+          items: ['PENDING', 'IN PROGRESS', 'RESOLVED']
+              .map(
+                (val) => DropdownMenuItem(
+                  value: val,
+                  child: Text(
+                    val,
+                    style: TextStyle(
+                      color: val == 'RESOLVED' ? Colors.green : Colors.orange,
+                    ),
+                  ),
+                ),
+              )
+              .toList(),
+          onChanged: (val) {
+            if (val == 'IN PROGRESS') {
+              _showContractorSelector(docId, dept);
+            } else if (val != null) {
+              _updateStatus(docId, val, data); // 👈 PASSING DATA TO UPDATE
+            }
+          },
+        ),
+      ),
+    );
+  }
+
   // --- UI HELPERS ---
+
+  Widget _buildAgeBadge(Map<String, dynamic> data) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.05),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: Colors.white10, width: 0.5),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.access_time, size: 10, color: Colors.grey),
+          const SizedBox(width: 4),
+          Text(
+            _getReportAge(data),
+            style: const TextStyle(color: Colors.grey, fontSize: 10),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildDeptBadge(String dept) {
     return Container(
@@ -564,6 +618,9 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
       child: Text(
         dept.toUpperCase(),
+        // 🛠️ FIX 2: Added overflow handling
+        overflow: TextOverflow.ellipsis,
+        maxLines: 1,
         style: const TextStyle(
           fontSize: 10,
           color: Colors.white,
@@ -609,7 +666,6 @@ class _AdminScreenState extends State<AdminScreen> {
       ),
       child: Column(
         children: [
-          // Wrapped in FittedBox to prevent overflow on small screens
           FittedBox(
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -670,7 +726,6 @@ class _AdminScreenState extends State<AdminScreen> {
     for (var doc in docs) {
       var data = doc.data() as Map<String, dynamic>;
 
-      // Robust location parsing (Handle GeoPoint or Map)
       LatLng? point;
       if (data['location'] != null) {
         if (data['location'] is GeoPoint) {
@@ -685,18 +740,14 @@ class _AdminScreenState extends State<AdminScreen> {
       }
 
       if (point != null) {
-        // Set the center to the first valid marker found
         centerPoint ??= point;
-
         markers.add(
           Marker(
             point: point,
             width: 40,
             height: 40,
             child: GestureDetector(
-              onTap: () {
-                // Optional: Show tooltip or navigate on map marker click
-              },
+              onTap: () {},
               child: const Icon(
                 Icons.location_on,
                 color: Colors.redAccent,
@@ -713,8 +764,7 @@ class _AdminScreenState extends State<AdminScreen> {
       child: FlutterMap(
         mapController: _mapController,
         options: MapOptions(
-          initialCenter:
-              centerPoint ?? const LatLng(0, 0), // Default if no markers
+          initialCenter: centerPoint ?? const LatLng(0, 0),
           initialZoom: 13.0,
         ),
         children: [
@@ -744,9 +794,7 @@ class _AdminScreenState extends State<AdminScreen> {
           hintStyle: TextStyle(color: Colors.grey),
           prefixIcon: Icon(Icons.search, color: Colors.grey),
           border: InputBorder.none,
-          contentPadding: EdgeInsets.only(
-            top: 8,
-          ), // Centers the text vertically
+          contentPadding: EdgeInsets.only(top: 8),
         ),
         onChanged: (val) => setState(() => _searchQuery = val),
       ),
@@ -762,7 +810,6 @@ class _AdminScreenState extends State<AdminScreen> {
     return GestureDetector(
       onTap: () {
         setState(() {
-          // Toggle functionality: if clicking already selected, go back to All (optional)
           if (isSel && label != "All") {
             _selectedFilter = "All";
           } else {
@@ -785,14 +832,13 @@ class _AdminScreenState extends State<AdminScreen> {
   void _showDeptDetails(Map<String, int> deptStats) {
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true, // 👈 Important: Allows the sheet to be taller
+      isScrollControlled: true,
       backgroundColor: const Color(0xFF1E1E1E),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (context) {
         return Container(
-          // 🛠️ FIX: Limit height to 70% of screen so it doesn't overflow
           height: MediaQuery.of(context).size.height * 0.7,
           padding: const EdgeInsets.all(20.0),
           child: Column(
@@ -807,8 +853,6 @@ class _AdminScreenState extends State<AdminScreen> {
                 ),
               ),
               const SizedBox(height: 20),
-
-              // 🛠️ FIX: Use Expanded + ListView to handle long lists
               Expanded(
                 child: deptStats.isEmpty
                     ? const Center(
@@ -827,7 +871,6 @@ class _AdminScreenState extends State<AdminScreen> {
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
-                                // Added Expanded here too, just in case a Dept name is super long
                                 Expanded(
                                   child: Text(
                                     key,

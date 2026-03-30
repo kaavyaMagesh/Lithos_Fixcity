@@ -33,6 +33,29 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
     _status = widget.data['aiAnalysis']?['status'] ?? 'PENDING';
   }
 
+  // 🕒 AGE CALCULATOR LOGIC
+  String _calculateReportAge() {
+    final dynamic startData = widget.data['createdAt'];
+    if (startData == null) return "N/A";
+
+    DateTime start = (startData is Timestamp)
+        ? startData.toDate()
+        : DateTime.parse(startData.toString());
+    DateTime end = DateTime.now();
+
+    if (_status == 'RESOLVED') {
+      final dynamic endData = widget.data['closedAt'];
+      if (endData != null) {
+        end = (endData is Timestamp)
+            ? endData.toDate()
+            : DateTime.parse(endData.toString());
+      }
+    }
+
+    int days = end.difference(start).inDays;
+    return days == 0 ? "Raised Today" : "$days Days";
+  }
+
   // 🖨️ PDF GENERATOR
   Future<void> _generatePdf() async {
     final pdf = pw.Document();
@@ -276,7 +299,8 @@ class _ReportDetailScreenState extends State<ReportDetailScreen> {
                             TileLayer(
                               urlTemplate:
                                   'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                  userAgentPackageName: 'com.codealchemists.fixcity',
+                              userAgentPackageName:
+                                  'com.codealchemists.fixcity',
                             ),
                             MarkerLayer(
                               markers: [
